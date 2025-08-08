@@ -96,6 +96,14 @@ void SPI_Init(SPI_Handle_t *pSPIHandle)
 	// CONFIGURE THE CPHA
 	tempreg1 |= pSPIHandle->SPIConfig.SPI_CPHA<<SPI_CR1_CPHA;
 
+	// Enable Software Slave Management if configured
+	if (pSPIHandle->SPIConfig.SPI_SSM == SPI_SSM_EN)
+	{
+	    tempreg1 |= (1 << SPI_CR1_SSM);  // Set SSM
+	    tempreg1 |= (1 << SPI_CR1_SSI);  // Set SSI (simulate NSS high)
+	}
+
+
 	//SPE bit
 //	tempreg1 |= pSPIHandle->SPIConfig.
 
@@ -160,6 +168,12 @@ void SPI_SendData(SPI_RegDef_t *pSPIx, uint8_t *pTxBuffer, uint32_t Len)
             pTxBuffer++; // Move the pointer by 1 byte since we're sending 8 bits
             Len--;
         }
+//        // ✅ Wait until RXNE is set (something is received in full-duplex)
+//        while(SPI_GetFlagStatus(pSPIx, SPI_RXNE_FLAG) == FLAG_RESET);
+//
+//        // ✅ Read DR to clear RXNE (discard if dummy)
+//        volatile uint16_t dummy = pSPIx->DR;
+//        (void)dummy; // avoid compiler warnings
 	}
 
 }

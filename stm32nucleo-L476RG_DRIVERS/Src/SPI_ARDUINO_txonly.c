@@ -23,13 +23,38 @@
  * ALT function mode : AF5
  */
 
+#define LED_GPIO_PORT GPIOA
+#define LED_PIN       5
+
+void LED_Init(void)
+{
+    GPIO_Handle_t ledgpio;
+    ledgpio.pGPIOx = LED_GPIO_PORT;
+    ledgpio.GPIO_PinConfig.GPIO_PinNumber = LED_PIN;
+    ledgpio.GPIO_PinConfig.GPIO_PinMode = GPIO_MODE_OUT;
+    ledgpio.GPIO_PinConfig.GPIO_PinSpeed = GPIO_SPEED_FAST;
+    ledgpio.GPIO_PinConfig.GPIO_PinOPType = GPIO_OP_TYPE_PP;
+    ledgpio.GPIO_PinConfig.GPIO_PinPuPdContol = GPIO_NO_PUPD;
+    GPIO_Init(&ledgpio);
+}
+
+void LED_On(void)
+{
+    GPIO_WriteToOutputPin(LED_GPIO_PORT, LED_PIN, GPIO_PIN_SET);
+}
+
+void LED_Off(void)
+{
+    GPIO_WriteToOutputPin(LED_GPIO_PORT, LED_PIN, GPIO_PIN_RESET);
+}
+
 //small change
 void delay(void)
 {
 	for(uint32_t i=0;i<50000/2;i++);
 }
 
-void SPI1_GPIOInits(void)
+void SPI2_GPIOInits(void)
 {
 	GPIO_Handle_t SPIPins;
 
@@ -67,33 +92,37 @@ void SPI1_GPIOInits(void)
 
 		//SCLK
 		SPIPins.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_13;
+		SPIPins.GPIO_PinConfig.GPIO_PinAltFunMode = 5;
 		GPIO_Init(&SPIPins);
 
 		//MISO
 		SPIPins.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_14;
+		SPIPins.GPIO_PinConfig.GPIO_PinAltFunMode = 5;
 		GPIO_Init(&SPIPins);
 
 		//MOSI
 		SPIPins.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_15;
+		SPIPins.GPIO_PinConfig.GPIO_PinAltFunMode = 5;
 		GPIO_Init(&SPIPins);
 
 		//NSS
 		SPIPins.GPIO_PinConfig.GPIO_PinNumber = GPIO_PIN_NO_12;
+		SPIPins.GPIO_PinConfig.GPIO_PinAltFunMode = 5;
 		GPIO_Init(&SPIPins);
 }
 
-void SPI1_Inits(void)
+void SPI2_Inits(void)
 {
 	SPI_Handle_t SPI2handle;
 
-	SPI2handle.pSPIx=SPI1;
+	SPI2handle.pSPIx=SPI2;
 	SPI2handle.SPIConfig.SPI_BusConfig = SPI_BUSCONFIG_FD;
 	SPI2handle.SPIConfig.SPI_DeviceMode = SPI_DEVICE_MODE_MASTER;
-	SPI2handle.SPIConfig.SPI_SclkSpeed = SPI_sCLK_SPEED_DIV8;
+	SPI2handle.SPIConfig.SPI_SclkSpeed = SPI_sCLK_SPEED_DIV64;
 	SPI2handle.SPIConfig.SPI_DS = SPI_DS_8BITS;
 	SPI2handle.SPIConfig.SPI_CPOL = SPI_CPOL_LOW;
 	SPI2handle.SPIConfig.SPI_CPHA = SPI_CPHA_LOW;
-	SPI2handle.SPIConfig.SPI_SSM = SPI_SSM_EN;
+	SPI2handle.SPIConfig.SPI_SSM = SPI_SSM_EN;  // Enable Software Slave Management (SSM)
 
 	SPI_Init(&SPI2handle);
 }
@@ -121,16 +150,17 @@ int main(void)
 {
 	char user_data[] = "Hello World";
 
-	SPI1_GPIOInits();
+	SPI2_GPIOInits();
 
-//	GPIO_ButtonInit();
+	GPIO_ButtonInit();
+	LED_Init();
 
 //	RCC->APB1RSTR1 |= (1<<21);
 
-	SPI1_Inits();
+	SPI2_Inits();
 
-
-	SPI_SSOEConfig(SPI2, ENABLE);
+	SPI_SSIConfig(SPI2, ENABLE);  // Enable SSI to simulate NSS high
+//	SPI_SSOEConfig(SPI2, ENABLE);
 
 //	SPI_PeripheralControl(SPI2, ENABLE);
 ////	GPIO_WriteToOutputPin(GPIOB, GPIO_PIN_NO_6, GPIO_PIN_SET);
@@ -142,33 +172,43 @@ int main(void)
 
 	while(1)
 	{
-		while(! GPIO_ReadFromInputPin(GPIOC, GPIO_PIN_NO_13));
+		while(!GPIO_ReadFromInputPin(GPIOC, GPIO_PIN_NO_13));
 
 		delay();
-
+		LED_On();  // Turn on LED to indicate button press
 		//ENABLE THE SPI SPE
-		SPI_PeripheralControl(SPI1, ENABLE);
+		SPI_PeripheralControl(SPI2, ENABLE);
 
 //		//first send the length information
 		uint8_t dataLen = strlen(user_data);
 //
 //		GPIO_WriteToOutputPin(GPIOB, GPIO_PIN_NO_6, GPIO_PIN_RESET);  // Turn on LED (for testing)
 //
-		SPI_SendData(SPI1, &dataLen, 1);
-
+		GPIO_WriteToOutputPin(GPIOB, GPIO_PIN_NO_12, GPIO_PIN_RESET); // NSS low
+		SPI_SendData(SPI2, &dataLen, 1);
 		//GPIO_WriteToOutputPin(GPIOA, GPIO_PIN_NO_4, GPIO_PIN_SET);  // NSS low
 
-		SPI_SendData(SPI1, (uint8_t*)user_data, strlen(user_data));
+
+		SPI_SendData(SPI2, (uint8_t*)user_data, strlen(user_data));
+
 
 //		GPIO_WriteToOutputPin(GPIOA, GPIO_PIN_NO_5, GPIO_PIN_RESET);  // Turn off LED
 
 		//confirm spi is not busy
-		while(SPI_GetFlagStatus(SPI1, SPI_BUSY_FLAG));
+		while(SPI_GetFlagStatus(SPI2, SPI_BUSY_FLAG));
+
+		GPIO_WriteToOutputPin(GPIOB, GPIO_PIN_NO_12, GPIO_PIN_SET); // NSS high
+
 
 //		GPIO_WriteToOutputPin(GPIOB, GPIO_PIN_NO_6, GPIO_PIN_SET);  // Turn on LED (for testing)
 
+
 		//DISABLE THE SPI PERI
-		SPI_PeriClockControl(SPI1, DISABLE);
+		SPI_PeripheralControl(SPI2, DISABLE);
+
+
+		LED_Off();  // Turn off LED after transmission
+
 	}
 
 
